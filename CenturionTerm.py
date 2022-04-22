@@ -94,7 +94,7 @@ class SerialDevice(Device):
         bytes = self.readBytes(1)
         if len(bytes) == 0:
             return -1
-        return int.from_bytes(self.readBytes(1), 'little')
+        return int.from_bytes(bytes, 'little')
 
     def cancelRead(self):
         if hasattr(self.serial, 'cancel_read'):
