@@ -116,3 +116,9 @@ If using Putty, be sure it is sending "putty" as the terminal type string or use
 ```bash
 python CenturionTerm.py
 ```
+
+To connect to a RAW TCP socket use:
+
+```bash
+python CenturionTerm.py socket://HOST:PORT
+```
