@@ -357,7 +357,7 @@ class CenturionTerm(object):
         
         scr.keypad(True)
         scr.idlok(True)
-        scr.scrollok(True)
+        scr.scrollok(self.config['auto_scroll'])
         self.scr = scr
         # print("Left->"+ str(curses.KEY_LEFT))
 
