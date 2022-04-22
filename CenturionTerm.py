@@ -18,6 +18,9 @@ class Device(object):
     def setup(self):
         pass
 
+    def close(self):
+        pass
+
     def writeBytes(self, bytes):
         pass
 
@@ -30,9 +33,14 @@ class Device(object):
     def readByte(self):
         pass
 
+    def cancelRead(self):
+        pass
+
 class SerialDevice(Device):
     def setup(self):
         super(SerialDevice, self).setup()
+
+        self.serial = None
 
         if 'url' in self.config:
             try:
@@ -65,6 +73,10 @@ class SerialDevice(Device):
                 eprint('Could not open port {!r}: {}'.format(self.config['port'], e))
                 sys.exit(1)
 
+    def close(self):
+        if self.serial is not None and not self.serial.closed:
+            self.serial.close()
+
     def writeBytes(self, bytes):
         self.serial.write(bytes)
     
@@ -76,6 +88,10 @@ class SerialDevice(Device):
     
     def readByte(self):
         return int.from_bytes(self.readBytes(1), 'little')
+
+    def cancelRead(self):
+        if hasattr(self.serial, 'cancel_read'):
+            self.serial.cancel_read()        
 
 class CenturionTerm(object):
     CMD_FLUSH = -2
@@ -109,41 +125,13 @@ class CenturionTerm(object):
         self.input_thread.daemon = True
         self.input_thread.start()
 
-    def stop(self):
-        self._console_alive = False
-        self.in_q.put(self.CMD_QUIT)
-        self.out_q.put(self.CMD_QUIT)
-        # self.input_thread.join()
-        # self.thread.join()
-
     def join(self):
         self.input_thread.join()
-        self.thread.join()        
+        self.thread.join()
 
-    def read(self, num=1):
-        str = ""
-        for i in range(num):
-            if not self._console_alive:
-                break
-            ch = self.in_q.get()
-            if ch < 0:
-                break
-            str += chr(ch)
-        return str
-
-    def cancel_read(self):
-        self.in_q.put(-255)
-
-    def write(self, msg):
-        for ch in msg:
-            self.out_q.put(ord(ch))
-
-    def write_bytes(self, msg):
-        for ch in msg:
-            self.out_q.put(ch)
-
-    def flush(self):
-        self.out_q.put(self.CMD_FLUSH)
+    def stop(self):
+        self._console_alive = False
+        self.device.cancelRead()
 
     def moveCursorBack(self):
         y, x = self.scr.getyx()
@@ -394,22 +382,16 @@ class CenturionTerm(object):
         elif ch >= 0 and ch <= 127:
             return [ch]
         elif ch == curses.KEY_DOWN:
-            # self.write("[DOWN]")
             return [0x0A] # LF, Cursor Down          
         elif ch == curses.KEY_UP:
-            # self.write("[UP]")
             return [0x1A] # SUB, Cursor Up
         elif ch == curses.KEY_LEFT:
-            # self.write("[LEFT]")
             return [0x15] # NAK, Backspace / Cursor Back
         elif ch == curses.KEY_RIGHT:
-            # self.write("[RIGHT]")
             return [0x06] # ACK, Cursor Forward
         elif ch == curses.KEY_HOME:
-            # self.write("[HOME]")
             return [0x01] # SOA, Cursor Home
         elif ch == curses.KEY_CLEAR:
-            # self.write("[CLEAR]")
             return [0x0C] # FF, Erase All
         elif ch == curses.KEY_DC:
             return [0x7F] # DEL
@@ -417,8 +399,8 @@ class CenturionTerm(object):
             return [0x08] # BS
         elif ch == -1:
             pass
-        else:
-            self.write("["+str(ch)+"]")
+        elif ch == curses.KEY_F10:
+            self.stop()
 
         return None
 
@@ -721,7 +703,7 @@ def main():
 
     device = SerialDevice(config)
     device.setup()
-        
+
     term = CenturionTerm(config, device)
     term.start()
 
@@ -731,9 +713,7 @@ def main():
         pass    
 
     term.stop()
+    device.close()
 
 if __name__ == '__main__':
-    # if not (sys.version_info.major >= 3 and sys.version_info.minor >= 9):
-    #     sys.exit("Requires Python 3.9 or above")
-    
     main()
