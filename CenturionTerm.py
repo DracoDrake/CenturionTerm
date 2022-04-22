@@ -545,6 +545,12 @@ def parseArguments():
         help='set baud rate')
 
     group.add_argument(
+        '--bits',
+        nargs='?',
+        type=str,
+        help='set number of data bits (5 6 7 8)')
+
+    group.add_argument(
         '--parity',
         choices=['N', 'E', 'O', 'S', 'M'],
         type=lambda c: c.upper(),
@@ -707,7 +713,11 @@ def main():
     try:
         term.join()
     except KeyboardInterrupt:
-        pass    
+        pass  
+    finally:
+        curses.echo()
+        curses.nocbreak()
+        curses.endwin() 
 
     term.stop()
     device.close()
