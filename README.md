@@ -15,7 +15,7 @@ On Ubuntu/Debian/Raspbian:
 sudo apt-get install git python3 python3-pip
 ```
 
-# Windows
+## Windows
 
 On WSL2/Ubuntu:
 
