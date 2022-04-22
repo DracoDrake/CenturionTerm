@@ -152,7 +152,7 @@ class CenturionTerm(object):
 
     def moveCursorDown(self):
         y, x = self.scr.getyx()
-        if y == 23:
+        if y >= 23:
             if self.config['auto_scroll']:
                 self.scr.addstr("\n") # Scroll
                 self.scr.refresh()
@@ -336,7 +336,7 @@ class CenturionTerm(object):
         self.oState = self.OSTATE_NORMAL
         self.escape_args = []
 
-
+        curses.resize_term(24, 80)
         curses.halfdelay(255)
         curses.start_color()
         #curses.use_default_colors()
