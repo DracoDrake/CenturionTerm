@@ -91,6 +91,9 @@ class SerialDevice(Device):
         return self.serial.read(num)
     
     def readByte(self):
+        bytes = self.readBytes(1)
+        if len(bytes) == 0:
+            return -1
         return int.from_bytes(self.readBytes(1), 'little')
 
     def cancelRead(self):
@@ -367,7 +370,7 @@ class CenturionTerm(object):
         while self._console_alive:
             ch = self.device.readByte()
 
-            if ch > 0:
+            if ch >= 0:
                 # print("[" + str(ch) + "]")
                 self.translate_output(ch)
 
@@ -376,7 +379,7 @@ class CenturionTerm(object):
     def translate_input(self, ch):
         if ch == 0x0A:
             return [0x0D]
-        elif ch > 0 and ch <= 127:
+        elif ch >= 0 and ch <= 127:
             return [ch]
         elif ch == curses.KEY_DOWN:
             return [0x0A] # LF, Cursor Down          
