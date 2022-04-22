@@ -85,7 +85,10 @@ General settings:
 Serial settings:
   --port [PORT]         serial device
   --baud [BAUD]         set baud rate
+  --bits [BITS]         set number of data bits (5 6 7 8)
   --parity {N,E,O,S,M}  set parity, one of {N E O S M}
+  --stopbits [STOPBITS]
+                        set number of stop bits (1 2)
   --rtscts-flowcontrol, --no-rtscts-flowcontrol
                         RTS/CTS flow control
   --xonxoff-flowcontrol, --no-xonxoff-flowcontrol
@@ -96,7 +99,6 @@ Serial settings:
                         set initial DTR line state
   --exclusive, --no-exclusive
                         locking for native ports
-
 ```
 
 ## Keys

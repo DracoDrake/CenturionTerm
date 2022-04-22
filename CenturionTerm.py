@@ -560,6 +560,12 @@ def parseArguments():
         help='set parity, one of {N E O S M}')
 
     group.add_argument(
+        '--stopbits',
+        nargs='?',
+        type=str,
+        help='set number of stop bits (1 2)')
+
+    group.add_argument(
         '--rtscts-flowcontrol',
         action=BooleanOptionalAction,
         help='RTS/CTS flow control')
