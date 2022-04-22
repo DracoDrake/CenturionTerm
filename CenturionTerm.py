@@ -363,27 +363,20 @@ class CenturionTerm(object):
         scr.idlok(True)
         scr.scrollok(self.config['auto_scroll'])
         self.scr = scr
-        # print("Left->"+ str(curses.KEY_LEFT))
 
         while self._console_alive:
-            #ch = self.out_q.get()
             ch = self.device.readByte()
 
             if ch >= 0:
                 # print("[" + str(ch) + "]")
                 self.translate_output(ch)
-            elif ch == self.CMD_FLUSH:
-                #self.main_win.refresh()
-                self.scr.refresh()
-            elif ch == self.CMD_QUIT:
-                break
 
         self._console_alive = False
 
     def translate_input(self, ch):
         if ch == 0x0A:
             return [0x0D]
-        elif ch >= 0 and ch <= 127:
+        elif ch > 0 and ch <= 127:
             return [ch]
         elif ch == curses.KEY_DOWN:
             return [0x0A] # LF, Cursor Down          
