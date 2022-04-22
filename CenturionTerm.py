@@ -45,6 +45,10 @@ class SerialDevice(Device):
         if 'url' in self.config:
             try:
                 self.serial = serial.serial_for_url(self.config['url'], do_not_open=True)
+                
+                if not hasattr(self.serial, 'cancel_read'):
+                    self.serial.timeout = 1
+
                 self.serial.open()
             except serial.SerialException as e:
                 eprint('Could not open url {!r}: {}'.format(self.config['url'], e))
