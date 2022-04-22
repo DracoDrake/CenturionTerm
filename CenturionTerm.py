@@ -367,7 +367,7 @@ class CenturionTerm(object):
         while self._console_alive:
             ch = self.device.readByte()
 
-            if ch >= 0:
+            if ch > 0:
                 # print("[" + str(ch) + "]")
                 self.translate_output(ch)
 
