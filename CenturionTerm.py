@@ -15,6 +15,20 @@ def eprint(*args, **kwargs):
 class Device(object):
     def __init__(self, config):
         self.config = config
+        self.exception_handlers = []
+
+    def registerExceptionHandler(self, func):
+        self.exception_handlers.append(func)
+
+    def defaultExceptionHandler(self, e):
+        sys.exit('{}'.format(e))
+
+    def handleException(self, e):
+        if len(self.exception_handlers) == 0:
+            self.defaultExceptionHandler(e)
+        else:
+            for handler in self.exception_handlers:
+                handler(e)
 
     def setup(self):
         pass
@@ -52,8 +66,7 @@ class SerialDevice(Device):
 
                 self.serial.open()
             except serial.SerialException as e:
-                eprint('Could not open url {!r}: {}'.format(self.config['url'], e))
-                sys.exit(1)
+                self.handleException(e)
         else:
             try:
                 self.serial = serial.serial_for_url(
@@ -75,21 +88,29 @@ class SerialDevice(Device):
 
                 self.serial.open()
             except serial.SerialException as e:
-                eprint('Could not open port {!r}: {}'.format(self.config['port'], e))
-                sys.exit(1)
+                self.handleException(e)
 
     def close(self):
-        if self.serial is not None and not self.serial.closed:
-            self.serial.close()
+        try:
+            if self.serial is not None and not self.serial.closed:
+                self.serial.close()
+        except serial.SerialException as e:
+            self.handleException(e)
 
     def writeBytes(self, bytes):
-        self.serial.write(bytes)
+        try:
+            self.serial.write(bytes)
+        except serial.SerialException as e:
+            self.handleException(e)
     
     def writeByte(self, byte):
         self.writeBytes(byte.to_bytes(1, 'little'))
 
     def readBytes(self, num):
-        return self.serial.read(num)
+        try:
+            return self.serial.read(num)
+        except serial.SerialException as e:
+            self.handleException(e)
     
     def readByte(self):
         bytes = self.readBytes(1)
@@ -98,8 +119,11 @@ class SerialDevice(Device):
         return int.from_bytes(bytes, 'little')
 
     def cancelRead(self):
-        if hasattr(self.serial, 'cancel_read'):
-            self.serial.cancel_read()        
+        try:
+            if hasattr(self.serial, 'cancel_read'):
+                self.serial.cancel_read()        
+        except serial.SerialException as e:
+            self.handleException(e)
 
 class CenturionTerm(object):
     CMD_FLUSH = -2
@@ -115,11 +139,15 @@ class CenturionTerm(object):
     def __init__(self, config, device):
         self.config = config
         self.device = device
+        self.device.registerExceptionHandler(self.deviceExceptionHandler)
         self._console_alive = False
         self.out_q = queue.Queue()
         self.scr = None
         # self.main_win = None
         # self.status_win = None
+
+    def deviceExceptionHandler(self, e):
+        logging.warn("Communication Error: {}".format(e.message))
 
     def start(self):
         self._console_alive = True
@@ -788,3 +816,4 @@ def main():
 if __name__ == '__main__':
     logging.basicConfig(filename='CenturionTerm.log', encoding='utf-8', level=logging.DEBUG)
     main()
+
