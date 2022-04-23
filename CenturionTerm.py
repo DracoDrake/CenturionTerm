@@ -160,7 +160,7 @@ class CenturionTerm(object):
         msg = "Communication Error: {}".format(str(e))
         logging.warning(msg)
         self.input_enabled = False
-        curses.nocbreak()
+        curses.halfdelay(1)
         if self.scr:
             self.scroll()
             self.scroll()
@@ -168,6 +168,7 @@ class CenturionTerm(object):
             self.scr.addstr(21,0, msg, curses.A_BOLD)
             self.scr.addstr(23,0, "[Press ENTER to exit]", curses.A_BOLD)
             self.scr.refresh()
+            curses.nocbreak()
             self.scr.getch()
             self.stop()
         else:
@@ -430,7 +431,7 @@ class CenturionTerm(object):
         self.escape_args = []
 
         curses.resize_term(24, 80)
-        curses.halfdelay(255)
+        curses.halfdelay(10)
         curses.start_color()
         #curses.nonl()
         #curses.use_default_colors()
@@ -517,7 +518,12 @@ class CenturionTerm(object):
                 except curses.error:
                     continue
                 
-                if not self.input_enabled: continue
+                # if input was disabled while in getch
+                # put character back
+                if not self.input_enabled: 
+                    if input >= 0 and input <= 255:
+                        curses.ungetch(input)
+                    continue
 
                 result = self.translate_input(input)
 
