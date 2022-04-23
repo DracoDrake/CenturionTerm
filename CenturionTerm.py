@@ -377,8 +377,12 @@ class CenturionTerm(object):
                 self.scr.refresh()
             elif ch == 0x00:
                 outch = 0xB7 # · Middle Dot
-            else:
+            elif ch >= 32 and ch < 127:
                 outch = ch
+            elif ch < 32:
+                attr = curses.A_STANDOUT
+                outch = ch + 64
+
         elif self.oState == self.OSTATE_ESCAPE:
             if ch == 0x59: # 'Y', Cursor Move Absolute
                 self.escape_args = []
@@ -444,6 +448,7 @@ class CenturionTerm(object):
         self.oState = self.OSTATE_NORMAL
         self.escape_args = []
 
+        curses.raw()
         curses.resize_term(25, 80)
         curses.halfdelay(10)
         curses.start_color()
