@@ -114,7 +114,7 @@ class SerialDevice(Device):
     
     def readByte(self):
         bytes = self.readBytes(1)
-        if len(bytes) == 0:
+        if bytes is None or len(bytes) == 0:
             return -1
         return int.from_bytes(bytes, 'little')
 
@@ -147,7 +147,7 @@ class CenturionTerm(object):
         # self.status_win = None
 
     def deviceExceptionHandler(self, e):
-        logging.warn("Communication Error: {}".format(str(e)))
+        logging.warning("Communication Error: {}".format(str(e)))
 
     def start(self):
         self._console_alive = True
