@@ -111,6 +111,7 @@ class CenturionTerm(object):
     OSTATE_CUR_ABS_2 = 30
     OSTATE_CUS_HORZ = 40
     OSTATE_CUR_VERT = 50
+    OSTATE_DATA_CHAR = 60
 
     def __init__(self, config, device):
         self.config = config
@@ -152,7 +153,7 @@ class CenturionTerm(object):
             # self.scr.move(y-1, 0)
             for x in range(80):
                 ch = self.scr.inch(y, x)
-                self.scr.addch(y-1, x, ch & 0xFF)
+                self.scr.addch(y-1, x, ch & 0xFF, ch & 0xFFFFFF00)
 
         self.scr.move(23, 0)
         self.scr.clrtoeol()
@@ -161,16 +162,19 @@ class CenturionTerm(object):
         self.scr.redrawwin()
         self.scr.refresh()
 
-    def addch(self, ch):
+    def addch(self, ch, attr=0):
         # self.logyx("addch", "Begin ch={}".format(ch))
         y, x = self.scr.getyx()
         if y == 23 and x == 79:
-            self.moveCursorForward()
-            self.scr.addch(22, 79, ch)
+            if self.config['auto_scroll']:
+                self.moveCursorForward()
+                self.scr.addch(22, 79, ch, attr)
+            else:
+                self.scr.addch(23, 79, ch, attr)
             self.scr.move(23, 0)
             self.scr.refresh()
         else:
-            self.scr.addch(y, x, ch)
+            self.scr.addch(y, x, ch, attr)
             self.scr.move(y, x)
             self.moveCursorForward()
 
@@ -275,6 +279,7 @@ class CenturionTerm(object):
 
     def translate_output(self, ch):
         outch = None
+        attr = 0
 
         if self.oState == self.OSTATE_NORMAL:
             if ch == 0x1B: # ESC
@@ -336,8 +341,10 @@ class CenturionTerm(object):
                 # TODO
                 self.oState = self.OSTATE_NORMAL
             elif ch == 0x5A: # 'Z', Store Control Character
-                # TODO
-                self.oState = self.OSTATE_NORMAL
+                # This command causes the characters which follow the command code
+                # to be considered as a data character and not acted upon by the
+                # terminal, regardles of its location on the ASCII chart.
+                self.oState = self.OSTATE_DATA_CHAR
             elif ch == 0x34: # '4', Transparent Print OFF
                 # TODO
                 self.oState = self.OSTATE_NORMAL
@@ -359,23 +366,30 @@ class CenturionTerm(object):
         elif self.oState == self.OSTATE_CUR_VERT:
             self.moveCursorVert(ch)
             self.oState = self.OSTATE_NORMAL
+        elif self.oState == self.OSTATE_DATA_CHAR:
+            if ch == 0:
+                outch = 0xB7 # · Middle Dot
+            elif ch < 32:
+                attr = curses.A_STANDOUT
+                outch = ch + 64
+            elif ch == 127:
+                outch = 0x2593 # ▓ Dark Shade
+            else:
+                outch = ch
+            self.oState = self.OSTATE_NORMAL
         else:
             # Error Unknown State
             outch = ch
             self.oState = self.OSTATE_NORMAL
         
         if outch is not None:
-            # self.main_win.addstr(chr(outch))
-            # self.main_win.refresh()
-            # self.scr.addstr(chr(outch))
-            # self.scr.refresh()
-            self.addch(chr(outch))
+            self.addch(chr(outch), attr)
 
     def do_output(self, scr):
         self.oState = self.OSTATE_NORMAL
         self.escape_args = []
 
-        curses.resize_term(24, 80)
+        curses.resize_term(25, 80)
         curses.halfdelay(255)
         curses.start_color()
         #curses.nonl()
@@ -405,8 +419,8 @@ class CenturionTerm(object):
         scr.keypad(True)
         scr.idlok(False)
         scr.scrollok(False)
-        scr.setscrreg(0, 23)
-        scr.resize(24, 80)
+        scr.setscrreg(0, 24)
+        scr.resize(25, 80)
         self.scr = scr
 
         while self._console_alive:
