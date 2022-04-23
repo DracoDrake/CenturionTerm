@@ -16,6 +16,7 @@ class Device(object):
     def __init__(self, config):
         self.config = config
         self.exception_handlers = []
+        self.enabled = False
 
     def registerExceptionHandler(self, func):
         self.exception_handlers.append(func)
@@ -65,7 +66,9 @@ class SerialDevice(Device):
                     self.serial.timeout = 1
 
                 self.serial.open()
+                self.enabled = True
             except serial.SerialException as e:
+                self.enabled = False
                 self.handleException(e)
         else:
             try:
@@ -87,7 +90,9 @@ class SerialDevice(Device):
                 self.serial.rts = self.config['initial_rts']
 
                 self.serial.open()
+                self.enabled = True
             except serial.SerialException as e:
+                self.enabled = False
                 self.handleException(e)
 
     def close(self):
@@ -107,10 +112,12 @@ class SerialDevice(Device):
         self.writeBytes(byte.to_bytes(1, 'little'))
 
     def readBytes(self, num):
-        try:
-            return self.serial.read(num)
-        except serial.SerialException as e:
-            self.handleException(e)
+        if self.enabled:
+            try:
+                return self.serial.read(num)
+            except serial.SerialException as e:
+                self.enabled = False
+                self.handleException(e)
     
     def readByte(self):
         bytes = self.readBytes(1)
@@ -119,11 +126,13 @@ class SerialDevice(Device):
         return int.from_bytes(bytes, 'little')
 
     def cancelRead(self):
-        try:
-            if hasattr(self.serial, 'cancel_read'):
-                self.serial.cancel_read()        
-        except serial.SerialException as e:
-            self.handleException(e)
+        if self.enabled:
+            try:
+                if hasattr(self.serial, 'cancel_read'):
+                    self.serial.cancel_read()        
+            except serial.SerialException as e:
+                self.enabled = False
+                self.handleException(e)
 
 class CenturionTerm(object):
     CMD_FLUSH = -2
@@ -143,11 +152,26 @@ class CenturionTerm(object):
         self._console_alive = False
         self.out_q = queue.Queue()
         self.scr = None
+        self.input_enabled = False
         # self.main_win = None
         # self.status_win = None
 
     def deviceExceptionHandler(self, e):
-        logging.warning("Communication Error: {}".format(str(e)))
+        msg = "Communication Error: {}".format(str(e))
+        logging.warning(msg)
+        self.input_enabled = False
+        curses.nocbreak()
+        if self.scr:
+            self.scroll()
+            self.scroll()
+            self.scroll()
+            self.scr.addstr(21,0, msg, curses.A_BOLD)
+            self.scr.addstr(23,0, "[Press ENTER to exit]", curses.A_BOLD)
+            self.scr.refresh()
+            self.scr.getch()
+            self.stop()
+        else:
+            sys.exit(msg)
 
     def start(self):
         self._console_alive = True
@@ -159,6 +183,8 @@ class CenturionTerm(object):
         self.input_thread = threading.Thread(target=self.do_input, name='centurionterm_input')
         self.input_thread.daemon = True
         self.input_thread.start()
+
+        self.input_enabled = True
 
     def join(self):
         self.input_thread.join()
@@ -440,6 +466,7 @@ class CenturionTerm(object):
         while self._console_alive:
             ch = self.device.readByte()
 
+            # Try and echo characters if enabled
             try:
                 while(True):
                     echo_ch = self.out_q.get_nowait()
@@ -484,11 +511,13 @@ class CenturionTerm(object):
     def do_input(self):
 
         while self._console_alive:
-            if self.scr is not None:
+            if self.scr is not None and self.input_enabled:
                 try:
                     input = self.scr.getch()
                 except curses.error:
                     continue
+                
+                if not self.input_enabled: continue
 
                 result = self.translate_input(input)
 
