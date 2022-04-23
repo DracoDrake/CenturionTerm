@@ -147,7 +147,7 @@ class CenturionTerm(object):
         # self.status_win = None
 
     def deviceExceptionHandler(self, e):
-        logging.warn("Communication Error: {}".format(e.message))
+        logging.warn("Communication Error: {}".format(str(e)))
 
     def start(self):
         self._console_alive = True
