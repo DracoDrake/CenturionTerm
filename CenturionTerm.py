@@ -7,7 +7,7 @@ import serial
 import sys
 import argparse
 import logging
-
+import signal
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -156,6 +156,11 @@ class CenturionTerm(object):
         self.input_enabled = False
         # self.main_win = None
         # self.status_win = None
+        signal.signal(signal.SIGINT, self.signal_handler_SIGINT)
+
+    def signal_handler_SIGINT(self, sig, frame):
+        # logging.debug("Ctrl-C SIGINT")
+        curses.ungetch(0x03)
 
     def deviceExceptionHandler(self, e):
         msg = "Communication Error: {}".format(str(e))
@@ -866,6 +871,7 @@ def main():
     device.close()
 
     logging.info("CenturionTerm Exit")
+
 
 if __name__ == '__main__':
     logging.basicConfig(filename='CenturionTerm.log', encoding='utf-8', level=logging.DEBUG)
