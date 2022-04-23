@@ -15,6 +15,21 @@ def eprint(*args, **kwargs):
 class Device(object):
     def __init__(self, config):
         self.config = config
+        self.exception_handlers = []
+        self.enabled = False
+
+    def registerExceptionHandler(self, func):
+        self.exception_handlers.append(func)
+
+    def defaultExceptionHandler(self, e):
+        sys.exit('{}'.format(e))
+
+    def handleException(self, e):
+        if len(self.exception_handlers) == 0:
+            self.defaultExceptionHandler(e)
+        else:
+            for handler in self.exception_handlers:
+                handler(e)
 
     def setup(self):
         pass
@@ -51,9 +66,10 @@ class SerialDevice(Device):
                     self.serial.timeout = 1
 
                 self.serial.open()
+                self.enabled = True
             except serial.SerialException as e:
-                eprint('Could not open url {!r}: {}'.format(self.config['url'], e))
-                sys.exit(1)
+                self.enabled = False
+                self.handleException(e)
         else:
             try:
                 self.serial = serial.serial_for_url(
@@ -74,32 +90,49 @@ class SerialDevice(Device):
                 self.serial.rts = self.config['initial_rts']
 
                 self.serial.open()
+                self.enabled = True
             except serial.SerialException as e:
-                eprint('Could not open port {!r}: {}'.format(self.config['port'], e))
-                sys.exit(1)
+                self.enabled = False
+                self.handleException(e)
 
     def close(self):
-        if self.serial is not None and not self.serial.closed:
-            self.serial.close()
+        try:
+            if self.serial is not None and not self.serial.closed:
+                self.serial.close()
+        except serial.SerialException as e:
+            self.handleException(e)
 
     def writeBytes(self, bytes):
-        self.serial.write(bytes)
+        try:
+            self.serial.write(bytes)
+        except serial.SerialException as e:
+            self.handleException(e)
     
     def writeByte(self, byte):
         self.writeBytes(byte.to_bytes(1, 'little'))
 
     def readBytes(self, num):
-        return self.serial.read(num)
+        if self.enabled:
+            try:
+                return self.serial.read(num)
+            except serial.SerialException as e:
+                self.enabled = False
+                self.handleException(e)
     
     def readByte(self):
         bytes = self.readBytes(1)
-        if len(bytes) == 0:
+        if bytes is None or len(bytes) == 0:
             return -1
         return int.from_bytes(bytes, 'little')
 
     def cancelRead(self):
-        if hasattr(self.serial, 'cancel_read'):
-            self.serial.cancel_read()        
+        if self.enabled:
+            try:
+                if hasattr(self.serial, 'cancel_read'):
+                    self.serial.cancel_read()        
+            except serial.SerialException as e:
+                self.enabled = False
+                self.handleException(e)
 
 class CenturionTerm(object):
     CMD_FLUSH = -2
@@ -116,11 +149,31 @@ class CenturionTerm(object):
     def __init__(self, config, device):
         self.config = config
         self.device = device
+        self.device.registerExceptionHandler(self.deviceExceptionHandler)
         self._console_alive = False
         self.out_q = queue.Queue()
         self.scr = None
+        self.input_enabled = False
         # self.main_win = None
         # self.status_win = None
+
+    def deviceExceptionHandler(self, e):
+        msg = "Communication Error: {}".format(str(e))
+        logging.warning(msg)
+        self.input_enabled = False
+        curses.halfdelay(1)
+        if self.scr:
+            self.scroll()
+            self.scroll()
+            self.scroll()
+            self.scr.addstr(21,0, msg, curses.A_BOLD)
+            self.scr.addstr(23,0, "[Press ENTER to exit]", curses.A_BOLD)
+            self.scr.refresh()
+            curses.nocbreak()
+            self.scr.getch()
+            self.stop()
+        else:
+            sys.exit(msg)
 
     def start(self):
         self._console_alive = True
@@ -132,6 +185,8 @@ class CenturionTerm(object):
         self.input_thread = threading.Thread(target=self.do_input, name='centurionterm_input')
         self.input_thread.daemon = True
         self.input_thread.start()
+
+        self.input_enabled = True
 
     def join(self):
         self.input_thread.join()
@@ -390,7 +445,7 @@ class CenturionTerm(object):
         self.escape_args = []
 
         curses.resize_term(25, 80)
-        curses.halfdelay(255)
+        curses.halfdelay(10)
         curses.start_color()
         #curses.nonl()
         #curses.use_default_colors()
@@ -426,6 +481,7 @@ class CenturionTerm(object):
         while self._console_alive:
             ch = self.device.readByte()
 
+            # Try and echo characters if enabled
             try:
                 while(True):
                     echo_ch = self.out_q.get_nowait()
@@ -470,10 +526,17 @@ class CenturionTerm(object):
     def do_input(self):
 
         while self._console_alive:
-            if self.scr is not None:
+            if self.scr is not None and self.input_enabled:
                 try:
                     input = self.scr.getch()
                 except curses.error:
+                    continue
+                
+                # if input was disabled while in getch
+                # put character back
+                if not self.input_enabled: 
+                    if input >= 0 and input <= 255:
+                        curses.ungetch(input)
                     continue
 
                 result = self.translate_input(input)
@@ -802,3 +865,4 @@ def main():
 if __name__ == '__main__':
     logging.basicConfig(filename='CenturionTerm.log', encoding='utf-8', level=logging.DEBUG)
     main()
+
