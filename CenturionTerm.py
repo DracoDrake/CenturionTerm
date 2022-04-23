@@ -6,10 +6,11 @@ from configparser import ConfigParser, NoOptionError
 import serial
 import sys
 import argparse
+import logging
+
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
-
 
 class Device(object):
     def __init__(self, config):
@@ -115,7 +116,6 @@ class CenturionTerm(object):
         self.config = config
         self.device = device
         self._console_alive = False
-        self.in_q = queue.Queue()
         self.out_q = queue.Queue()
         self.scr = None
         # self.main_win = None
@@ -140,7 +140,42 @@ class CenturionTerm(object):
         self._console_alive = False
         self.device.cancelRead()
 
+    def logyx(self, func, msg=""):
+        y, x = self.scr.getyx()
+        logging.debug("{}: ({},{}) {}".format(func, y, x, msg))
+
+    def scroll(self):
+        # self.logyx("scroll", "Begin")
+        save_y, save_x = self.scr.getyx()
+        
+        for y in range(1, 24):
+            # self.scr.move(y-1, 0)
+            for x in range(80):
+                ch = self.scr.inch(y, x)
+                self.scr.addch(y-1, x, ch & 0xFF)
+
+        self.scr.move(23, 0)
+        self.scr.clrtoeol()
+        self.scr.move(save_y, save_x)
+
+        self.scr.redrawwin()
+        self.scr.refresh()
+
+    def addch(self, ch):
+        # self.logyx("addch", "Begin ch={}".format(ch))
+        y, x = self.scr.getyx()
+        if y == 23 and x == 79:
+            self.moveCursorForward()
+            self.scr.addch(22, 79, ch)
+            self.scr.move(23, 0)
+            self.scr.refresh()
+        else:
+            self.scr.addch(y, x, ch)
+            self.scr.move(y, x)
+            self.moveCursorForward()
+
     def moveCursorBack(self):
+        # self.logyx("moveCursorBack", "Begin")
         y, x = self.scr.getyx()
         if x == 0 and y == 0:
             self.scr.move(23, 79)
@@ -151,11 +186,12 @@ class CenturionTerm(object):
         self.scr.refresh()
 
     def moveCursorDown(self):
+        # self.logyx("moveCursorDown", "Begin")
         y, x = self.scr.getyx()
+        # eprint("y="+str(y)+", x="+str(x))
         if y >= 23:
             if self.config['auto_scroll']:
-                self.scr.addstr("\n") # Scroll
-                self.scr.refresh()
+                self.scroll()
                 self.scr.move(23, x)
             else:
                 self.scr.move(0, x)
@@ -164,15 +200,15 @@ class CenturionTerm(object):
         self.scr.refresh()
 
     def moveCursorForward(self):
+        # self.logyx("moveCursorForward", "Begin")
         y, x = self.scr.getyx()
-        if x == 79:
-            if y == 23:
+        if x >= 79:
+            if y >= 23:
                 # I'm unsure what the actual terminal does
                 # here and the manual isn't clear
                 if self.config['auto_scroll']:
-                    self.scr.addstr("\n") # Scroll
-                else:
-                    self.scr.move(23, 0)
+                    self.scroll()
+                self.scr.move(23, 0)
             else:
                 self.scr.move(y+1, 0)
         else:
@@ -187,6 +223,7 @@ class CenturionTerm(object):
         self.scr.refresh()
 
     def moveCursorUp(self):
+        # self.logyx("moveCursorUp", "Begin")
         y, x = self.scr.getyx()
         if y == 0:
             self.scr.move(23, x)
@@ -195,6 +232,7 @@ class CenturionTerm(object):
         self.scr.refresh()
 
     def moveCursor(self, y, x):
+        # self.logyx("moveCursor", "Begin to ({},{})".format(y,x))
         if y < 24 and x < 80:
             self.scr.move(y, x)
             self.scr.refresh()
@@ -329,8 +367,9 @@ class CenturionTerm(object):
         if outch is not None:
             # self.main_win.addstr(chr(outch))
             # self.main_win.refresh()
-            self.scr.addstr(chr(outch))
-            self.scr.refresh()
+            # self.scr.addstr(chr(outch))
+            # self.scr.refresh()
+            self.addch(chr(outch))
 
     def do_output(self, scr):
         self.oState = self.OSTATE_NORMAL
@@ -339,6 +378,7 @@ class CenturionTerm(object):
         curses.resize_term(24, 80)
         curses.halfdelay(255)
         curses.start_color()
+        #curses.nonl()
         #curses.use_default_colors()
 
         scr.clear()
@@ -363,12 +403,21 @@ class CenturionTerm(object):
         # self.status_win = status_win
         
         scr.keypad(True)
-        scr.idlok(True)
-        scr.scrollok(self.config['auto_scroll'])
+        scr.idlok(False)
+        scr.scrollok(False)
+        scr.setscrreg(0, 23)
+        scr.resize(24, 80)
         self.scr = scr
 
         while self._console_alive:
             ch = self.device.readByte()
+
+            try:
+                while(True):
+                    echo_ch = self.out_q.get_nowait()
+                    self.translate_output(echo_ch)
+            except queue.Empty:
+                pass
 
             if ch >= 0:
                 # print("[" + str(ch) + "]")
@@ -417,7 +466,9 @@ class CenturionTerm(object):
 
                 if result is not None:
                     for ch in result:
-                        #self.in_q.put(ch)
+                        if self.config['echo']:
+                            self.out_q.put(ch)
+                            self.device.cancelRead()
                         self.device.writeByte(ch)
             else:
                 time.sleep(0.5)
@@ -601,6 +652,7 @@ def parseConfig(config_file):
     return {s:dict(config.items(s)) for s in config.sections()}
 
 def main():
+    logging.info("CenturionTerm Starting ...")
 
     config_defaults = {
         'normal_case_upper': False, 
@@ -731,5 +783,8 @@ def main():
     term.stop()
     device.close()
 
+    logging.info("CenturionTerm Exit")
+
 if __name__ == '__main__':
+    logging.basicConfig(filename='CenturionTerm.log', encoding='utf-8', level=logging.DEBUG)
     main()
